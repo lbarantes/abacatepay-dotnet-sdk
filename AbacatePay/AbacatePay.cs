@@ -12,22 +12,21 @@ namespace Abacatepay
         private const string version = "1.0.0";
         private static string apiKey;
         private static JObject constants;
-        private static JObject urls;
-        private static bool sandbox;
+        private static bool testing;
         private string baseURL;
 
         public AbacatePay(JObject options)
         {
             ApiKey = (string)options["apiKey"];
-            Sandbox = (bool)options["sandbox"];
+            Testing = (bool)options["testing"];
             Constants constant = new Constants();
             constants = JObject.Parse(constant.getConstant());
         }
 
-        public AbacatePay(string apiKey, bool sandbox)
+        public AbacatePay(string apiKey, bool testing)
         {
             ApiKey = apiKey;
-            Sandbox = sandbox;
+            Testing = testing;
             Constants constant = new Constants();
             constants = JObject.Parse(constant.getConstant());
         }
@@ -35,25 +34,19 @@ namespace Abacatepay
         public override bool TryInvokeMember(InvokeMemberBinder binder, object[] args, out object result)
         {
             JObject endpoint = null;
+            string apiType = constants["APIS"].Children<JProperty>()
+                                     .FirstOrDefault(prop => prop.Value["ENDPOINTS"][binder.Name] != null)?.Name;
 
-            if ((JObject)constants["APIS"]["PIX"]["ENDPOINTS"][binder.Name] != null)
+            if (apiType != null)
             {
-                urls = (JObject)constants["APIS"]["PIX"]["URL"];
-                baseURL = Sandbox ? (string)urls["sandbox"] : (string)urls["production"];
-                endpoint = (JObject)constants["APIS"]["PIX"]["ENDPOINTS"][binder.Name];
-            }
-
-            if ((JObject)constants["APIS"]["CUSTOMER"]["ENDPOINTS"][binder.Name] != null)
-            {
-                urls = (JObject)constants["APIS"]["CUSTOMER"]["URL"];
-                baseURL = Sandbox ? (string)urls["sandbox"] : (string)urls["production"];
-                endpoint = (JObject)constants["APIS"]["CUSTOMER"]["ENDPOINTS"][binder.Name];
+                baseURL = (string)constants["URL"];
+                endpoint = (JObject)constants["APIS"][apiType]["ENDPOINTS"][binder.Name];
             }
 
             if (endpoint == null)
-                throw new AbacateException(0, "invalid_endpoint", string.Format("Método '{0}' inexistente", binder.Name));
+                throw new AbacateException(0, "invalid_endpoint", $"Método '{binder.Name}' inexistente");
 
-            if (baseURL == "")
+            if (string.IsNullOrEmpty(baseURL))
                 throw new AbacateException(1, "invalid_environment", "Endpoint não disponível para o ambiente informado.");
 
             var route = (string)endpoint["route"];
@@ -66,17 +59,13 @@ namespace Abacatepay
                 result = RequestEndpoint(route, method, query, body);
                 return true;
             }
-            catch (AbacateException e)
+            catch (AbacateException e) when (e.Code == 401)
             {
-                if (e.Code == 401)
-                {
-                    throw new AbacateException(401, "Unauthorized", "Não foi possível autenticar. Por favor, certifique-se de sua chave de api está correta.");
-                }
-                else
-                {
-                    throw new AbacateException(500, "server_error",
-                                           "Ocorreu um erro ao realizar a requisição.");
-                }
+                throw new AbacateException(401, "Unauthorized", "Não foi possível autenticar. Por favor, certifique-se de sua chave de api está correta.");
+            }
+            catch (AbacateException)
+            {
+                throw new AbacateException(500, "server_error", "Ocorreu um erro ao realizar a requisição.");
             }
         }
 
@@ -85,26 +74,31 @@ namespace Abacatepay
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             string newEndpoint = GetEndpointRequest(endpoint, method, query);
 
-            var request = new RestRequest();
+            var request = new RestRequest
+            {
+                Method = method switch
+                {
+                    "GET" => Method.Get,
+                    "POST" => Method.Post,
+                    _ => throw new AbacateException(400, "invalid_method", "Método HTTP inválido.")
+                }
+            };
 
-            if (method == "GET") request.Method = Method.Get;
-            else if (method == "POST") request.Method = Method.Post;
-
-            request.AddHeader("Authorization", string.Format("Bearer {0}", ApiKey));
-            request.AddHeader("api-sdk", string.Format("abacatepay-dotnet-{0}", version));
+            request.AddHeader("Authorization", $"Bearer {ApiKey}");
+            request.AddHeader("api-sdk", $"abacatepay-dotnet-{version}");
 
             try
             {
                 return SendRequest(request, body, newEndpoint);
             }
-            catch (WebException e)
+            catch (WebException e) when (e.Response is HttpWebResponse response)
             {
-                if (e.Response != null && e.Response is HttpWebResponse)
-                {
-                    var statusCode = (int)((HttpWebResponse)e.Response).StatusCode;
-                    var reader = new StreamReader(e.Response.GetResponseStream());
-                    throw AbacateException.Build(reader.ReadToEnd(), statusCode);
-                }
+                using var reader = new StreamReader(response.GetResponseStream());
+                var statusCode = (int)response.StatusCode;
+                throw AbacateException.Build(reader.ReadToEnd(), statusCode);
+            }
+            catch
+            {
                 throw AbacateException.Build("", 500);
             }
         }
@@ -112,38 +106,28 @@ namespace Abacatepay
 
         public string GetEndpointRequest(string endpoint, string method, object query)
         {
-            if (query != null)
+            if (query == null) return endpoint;
+
+            var queryDict = query.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                                 .Where(p => p.CanRead)
+                                 .ToDictionary(p => p.Name, p => p.GetValue(query, null)?.ToString());
+
+            var matches = Regex.Matches(endpoint, ":([a-zA-Z0-9]+)");
+
+            foreach (Match match in matches)
             {
-                var attr = BindingFlags.Public | BindingFlags.Instance;
-                var queryDict = new Dictionary<string, object>();
-                foreach (var property in query.GetType().GetProperties(attr))
-                    if (property.CanRead)
-                        queryDict.Add(property.Name, property.GetValue(query, null));
-
-                var matchCollection = Regex.Matches(endpoint, ":([a-zA-Z0-9]+)");
-                for (var i = 0; i < matchCollection.Count; i++)
+                var key = match.Groups[1].Value;
+                if (queryDict.TryGetValue(key, out var value))
                 {
-                    var resource = matchCollection[i].Groups[1].Value;
-                    try
-                    {
-                        var value = queryDict[resource].ToString();
-                        endpoint = Regex.Replace(endpoint, string.Format(":{0}", resource), value);
-                        queryDict.Remove(resource);
-                    }
-                    catch (Exception) { }
+                    endpoint = endpoint.Replace($":{key}", value);
+                    queryDict.Remove(key);
                 }
+            }
 
-                var queryString = "";
-                foreach (var pair in queryDict)
-                {
-                    if (queryString.Equals(""))
-                        queryString = "?";
-                    else
-                        queryString += "&";
-                    queryString += string.Format("{0}={1}", pair.Key, pair.Value);
-                }
-
-                endpoint += queryString;
+            if (queryDict.Any())
+            {
+                var queryString = string.Join("&", queryDict.Select(kvp => $"{kvp.Key}={kvp.Value}"));
+                endpoint += "?" + queryString;
             }
 
             return endpoint;
@@ -163,6 +147,6 @@ namespace Abacatepay
 
 
         private static string ApiKey { get => apiKey; set => apiKey = value; }
-        public static bool Sandbox { get => sandbox; set => sandbox = value; }
+        public static bool Testing { get => testing; set => testing = value; }
     }
 }

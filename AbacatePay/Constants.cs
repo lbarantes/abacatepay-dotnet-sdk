@@ -6,15 +6,11 @@ namespace Abacatepay
     {
         public object Const = new
         {
+            URL = "https://api.abacatepay.com",
             APIS = new
             {
                 PIX = new
                 {
-                    URL = new
-                    {
-                        production = "https://api.abacatepay.com",
-                        sandbox = "https://api.abacatepay.com"
-                    },
                     ENDPOINTS = new
                     {
                         PixBillingCreate = new
@@ -31,11 +27,6 @@ namespace Abacatepay
                 },
                 CUSTOMER = new
                 {
-                    URL = new
-                    {
-                        production = "https://api.abacatepay.com",
-                        sandbox = "https://api.abacatepay.com"
-                    },
                     ENDPOINTS = new
                     {
                         CustomerCreate = new
