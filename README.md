@@ -56,7 +56,7 @@ Lembre-se de colocar suas credenciais dentro de `Examples/credentials.json` ante
 A documentação completa com todos endpoints pode ser encontrada em https://abacatepay.readme.io/reference/oi.
 
 ## Contribuição
-Report de bugs e pull request são bem-vindas, para isso acesse <link>.
+Report de bugs e pull request são bem-vindas, para isso acesse o repositório [aqui](https://github.com/lbarantes/abacatepay-dotnet-sdk).
 Este projeto tem a intenção de ser um espaço seguro para colaboração.
 
 ## Licença
