@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <Title>AbacatPay .NET SDK</Title>
+        <Version>1.0.0</Version>
+        <Authors>Lucas Beliene</Authors>
+        <Description>SDK em .NET integrada a API da abacate pay para cobranças PIX</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+      <PackageReference Include="RestSharp" Version="112.1.0" />
+    </ItemGroup>
+
+</Project>
