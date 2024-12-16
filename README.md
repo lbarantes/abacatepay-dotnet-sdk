@@ -6,7 +6,7 @@
 
 Através da .NET Cli:
 ```bash
-> dotnet add package AbacatePay --version 2.0.0
+> dotnet add package AbacatePay --version 1.0.0
 ```
 
 ## Testado com
